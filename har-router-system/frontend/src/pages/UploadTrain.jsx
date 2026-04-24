@@ -27,9 +27,20 @@ export default function UploadTrain() {
       const res = await uploadDataset(file)
       setUploadedName(res.filename)
       setFiles(f => [...new Set([...f, res.filename])])
-    } catch (e) { setError(e.response?.data?.detail || 'Upload failed.') }
+    } catch (e) {
+      // If file already exists, just use it for training
+      const detail = e.response?.data?.detail || ''
+      if (detail.includes('already exists')) {
+        setUploadedName(_sanitize(file.name))
+        setFiles(f => [...new Set([...f, _sanitize(file.name)])])
+      } else {
+        setError(detail || 'Upload failed.')
+      }
+    }
     finally { setUploading(false) }
   }
+
+  const _sanitize = (name) => name.replace(/\s+/g, '_')
 
   const handleTrain = async () => {
     const fname = uploadedName || (files.length > 0 ? files[0] : null)
@@ -71,7 +82,7 @@ export default function UploadTrain() {
             Choose File
           </button>
           <button
-            onClick={file ? handleUpload : handleTrain}
+            onClick={uploadedName ? handleTrain : file ? handleUpload : handleTrain}
             disabled={uploading || training}
             className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-5 py-2.5 text-sm font-semibold shadow-md shadow-blue-200 transition-all active:scale-[0.98] disabled:opacity-50"
           >
@@ -82,19 +93,45 @@ export default function UploadTrain() {
 
       {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</p>}
 
-      {/* Accuracy cards */}
+      {/* Training results */}
       {metrics && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
-            <p className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Baseline Accuracy</p>
-            <p className="text-3xl font-extrabold text-amber-700">{(metrics.baseline_accuracy * 100).toFixed(1)}%</p>
-            <p className="text-sm text-amber-600 mt-1">Standard HAR model performance.</p>
+        <div className="flex flex-col gap-4">
+          {/* Accuracy cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+              <p className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Baseline Accuracy</p>
+              <p className="text-3xl font-extrabold text-amber-700">{(metrics.baseline_accuracy * 100).toFixed(1)}%</p>
+              <p className="text-xs text-amber-600 mt-1">F1: {metrics.baseline_f1 ? `${(metrics.baseline_f1 * 100).toFixed(1)}%` : '--'}</p>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-5">
+              <p className="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">Routed Accuracy</p>
+              <p className="text-3xl font-extrabold text-green-700">{(metrics.routed_accuracy * 100).toFixed(1)}%</p>
+              <p className="text-xs text-green-600 mt-1">F1: {metrics.routed_f1 ? `${(metrics.routed_f1 * 100).toFixed(1)}%` : '--'}</p>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+              <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Accuracy Uplift</p>
+              <p className="text-3xl font-extrabold text-blue-700">
+                {metrics.accuracy_uplift >= 0 ? '+' : ''}{(metrics.accuracy_uplift * 100).toFixed(1)}%
+              </p>
+              <p className="text-xs text-blue-600 mt-1">{metrics.n_cluster_models} cluster models trained</p>
+            </div>
           </div>
-          <div className="bg-green-50 border border-green-200 rounded-2xl p-5">
-            <p className="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">Routed Accuracy</p>
-            <p className="text-3xl font-extrabold text-green-700">{(metrics.routed_accuracy * 100).toFixed(1)}%</p>
-            <p className="text-sm text-green-600 mt-1">Performance after cluster-based routing.</p>
-          </div>
+
+          {/* Cluster distribution */}
+          {metrics.cluster_distribution && Object.keys(metrics.cluster_distribution).length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+              <p className="font-bold text-gray-900 mb-3">Cluster Distribution</p>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                {Object.entries(metrics.cluster_distribution).map(([c, count]) => (
+                  <div key={c} className="bg-gray-50 rounded-xl px-3 py-2 text-center">
+                    <p className="text-xs text-gray-500">Cluster {c}</p>
+                    <p className="text-sm font-bold text-gray-800">{count}</p>
+                    <p className="text-xs text-gray-400">samples</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

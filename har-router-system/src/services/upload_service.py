@@ -36,13 +36,7 @@ def save_and_validate_csv(file: UploadFile) -> dict:
     filename = _sanitize_filename(file.filename)
     save_path = DATA_DIR / filename
 
-    # Prevent overwrite
-    if save_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"File '{filename}' already exists."
-        )
-
+    # If file already exists, overwrite it (re-upload is intentional)
     # Save file
     with open(save_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
