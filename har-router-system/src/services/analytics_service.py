@@ -41,7 +41,7 @@ def get_summary() -> dict:
 # ─────────────────────────────────────────────────────────────
 
 def get_accuracy() -> dict:
-    """Return baseline vs routed accuracy."""
+    """Return baseline vs routed accuracy + F1 scores."""
 
     if not METRICS_FILE.exists():
         raise HTTPException(
@@ -53,15 +53,23 @@ def get_accuracy() -> dict:
         with METRICS_FILE.open() as f:
             m = json.load(f)
     except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Metrics file is corrupted."
-        )
+        raise HTTPException(status_code=500, detail="Metrics file is corrupted.")
 
     return {
-        "baseline_accuracy": m.get("baseline_accuracy", 0.0),
-        "routed_accuracy": m.get("routed_accuracy", 0.0),
-        "accuracy_uplift": m.get("accuracy_uplift", 0.0),
+        "baseline_accuracy":  m.get("baseline_accuracy", 0.0),
+        "routed_accuracy":    m.get("routed_accuracy",   0.0),
+        "accuracy_uplift":    m.get("accuracy_uplift",   0.0),
+        "baseline_f1":        m.get("baseline", {}).get("f1", 0.0),
+        "routed_f1":          m.get("routed",   {}).get("f1", 0.0),
+        "baseline_precision": m.get("baseline", {}).get("precision", 0.0),
+        "routed_precision":   m.get("routed",   {}).get("precision", 0.0),
+        "baseline_recall":    m.get("baseline", {}).get("recall", 0.0),
+        "routed_recall":      m.get("routed",   {}).get("recall", 0.0),
+        "n_clusters":         m.get("n_clusters", 0),
+        "n_cluster_models":   m.get("n_cluster_models", 0),
+        "baseline_roc_auc":   m.get("baseline", {}).get("roc_auc", None),
+        "routed_roc_auc":     m.get("routed",   {}).get("roc_auc", None),
+        "silhouette_score":   m.get("silhouette_score", None),
     }
 
 
@@ -70,7 +78,7 @@ def get_accuracy() -> dict:
 # ─────────────────────────────────────────────────────────────
 
 def get_cluster_stats() -> list:
-    """Return cluster-wise sample counts."""
+    """Return cluster-wise sample counts from training + routing counts from prediction logs."""
 
     if not METRICS_FILE.exists():
         raise HTTPException(
@@ -82,15 +90,25 @@ def get_cluster_stats() -> list:
         with METRICS_FILE.open() as f:
             m = json.load(f)
     except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Metrics file is corrupted."
-        )
+        raise HTTPException(status_code=500, detail="Metrics file is corrupted.")
 
-    cluster_dist = m.get("cluster_distribution", {})
+    cluster_dist    = m.get("cluster_distribution", {})
+    cluster_metrics = m.get("cluster_metrics", {})
+
+    # Count how many predictions were routed to each cluster from live logs
+    entries = read_logs(limit=500)
+    routing_counts = {}
+    for e in entries:
+        c = str(e.get("cluster", 0))
+        routing_counts[c] = routing_counts.get(c, 0) + 1
 
     return [
-        {"cluster_id": int(k), "sample_count": v}
+        {
+            "cluster_id":     int(k),
+            "sample_count":   v,
+            "routing_count":  routing_counts.get(k, 0),
+            "cluster_accuracy": cluster_metrics.get(k, {}).get("accuracy", None),
+        }
         for k, v in sorted(cluster_dist.items(), key=lambda x: int(x[0]))
     ]
 
